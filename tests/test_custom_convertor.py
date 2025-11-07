@@ -4,6 +4,7 @@ import graphene
 import strawberry
 
 from strawberry_graphene.schema import Schema
+from strawberry import tools as strawberry_tools
 
 
 def normalize_schema(schema_str):
@@ -268,3 +269,32 @@ def test_mutation():
     )
     assert not result.errors
     assert result.data == {"addUser": {"user": {"username": "jkimbo"}}}
+
+def test_merge_different_queries():
+    @strawberry.type
+    class StrawberryQuery:
+        @strawberry.field
+        def hey(self) -> str:
+            return "Strawberry!"
+
+    class GrapheneQuery(graphene.ObjectType):
+        ho = graphene.String(default_value="World")
+
+    merged_query = strawberry_tools.merge_types("Query", (StrawberryQuery, GrapheneQuery))
+
+    schema = Schema(merged_query)
+
+    expected = dedent(
+        """\
+        type Query {
+          hey: String!
+          ho: String
+        }
+        """
+    ).strip()
+    assert normalize_schema(str(schema)) == normalize_schema(expected)
+
+    # Test that both fields can be queried
+    result = schema.execute_sync("{ hey ho }")
+    assert not result.errors
+    assert result.data == {"hey": "Strawberry!", "ho": "World"}

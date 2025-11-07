@@ -39,15 +39,57 @@ class GraphQLCoreConverter(strawberry.schema.schema_converter.GraphQLCoreConvert
 
     def from_object_type(self, object_type: Type) -> GraphQLObjectType:
         """Convert object type (Strawberry or Graphene) to GraphQLObjectType"""
-        # Check if it's a Graphene type
+        from graphql import GraphQLObjectType, GraphQLFieldMap
+
+        # Check if this is a merged type (both Strawberry and Graphene)
+        is_graphene = False
         try:
-            if issubclass(object_type, graphene.ObjectType):
-                return self.add_graphene_type(object_type)
+            is_graphene = issubclass(object_type, graphene.ObjectType)
         except TypeError:
             pass
 
-        # Handle Strawberry types
-        if has_object_definition(object_type):
+        has_strawberry = has_object_definition(object_type)
+
+        # Handle merged types (both Strawberry and Graphene)
+        if is_graphene and has_strawberry:
+            # Get Strawberry fields
+            definition = get_object_definition(object_type)
+            strawberry_type = self.from_object(definition)
+
+            # Merge the fields
+            merged_fields = {}
+            # Add Strawberry fields first
+            strawberry_fields = strawberry_type.fields
+            for name, field in strawberry_fields.items():
+                merged_fields[name] = field
+
+            # Extract Graphene fields from all Graphene base classes
+            # Walk through the MRO to find all Graphene ObjectType base classes
+            for base in object_type.__mro__:
+                try:
+                    if base != object_type and issubclass(base, graphene.ObjectType):
+                        # Process this Graphene type to get its fields
+                        graphene_base_type = self.add_graphene_type(base)
+                        # Add fields that aren't already in merged_fields
+                        for name, field in graphene_base_type.fields.items():
+                            if name not in merged_fields:
+                                merged_fields[name] = field
+                except (TypeError, AttributeError):
+                    continue
+
+            # Create a new merged type
+            return GraphQLObjectType(
+                name=strawberry_type.name,
+                fields=lambda: merged_fields,
+                description=strawberry_type.description,
+            )
+
+        # Check if it's only a Graphene type
+        if is_graphene:
+            return self.add_graphene_type(object_type)
+
+        # Handle only Strawberry types
+        if has_strawberry:
             definition = get_object_definition(object_type)
             return self.from_object(definition)
 
