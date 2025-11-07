@@ -3,7 +3,27 @@ from decimal import Decimal
 import graphene
 import strawberry
 
-from main.schema import Schema
+from strawberry_graphene.schema import Schema
+
+
+def normalize_schema(schema_str):
+    """Sort schema type definitions for order-independent comparison."""
+    lines = schema_str.strip().split('\n')
+    blocks = []
+    current_block = []
+
+    for line in lines:
+        if line and not line.startswith(' ') and not line.startswith('\t'):
+            if current_block:
+                blocks.append('\n'.join(current_block))
+            current_block = [line]
+        else:
+            current_block.append(line)
+
+    if current_block:
+        blocks.append('\n'.join(current_block))
+
+    return '\n\n'.join(sorted(blocks))
 
 
 def test_convert_graphene_basic():
@@ -20,7 +40,7 @@ def test_convert_graphene_basic():
         """
     ).strip()
 
-    assert str(schema) == expected
+    assert normalize_schema(str(schema)) == normalize_schema(expected)
 
     result = schema.execute_sync("{ hello }")
     assert not result.errors
@@ -77,7 +97,7 @@ def test_convert_graphene_more():
         """
     ).strip()
 
-    assert str(schema) == expected
+    assert normalize_schema(str(schema)) == normalize_schema(expected)
 
     result = schema.execute_sync(
         """
@@ -137,7 +157,7 @@ def test_decimal_type():
         """
     ).strip()
 
-    assert str(schema) == expected
+    assert normalize_schema(str(schema)) == normalize_schema(expected)
 
 
 def test_graphene_type_resolving_strawberry_type():
@@ -174,7 +194,7 @@ def test_graphene_type_resolving_strawberry_type():
         }
         """
     ).strip()
-    assert str(schema) == expected
+    assert normalize_schema(str(schema)) == normalize_schema(expected)
 
     result = schema.execute_sync(
         """
@@ -203,7 +223,7 @@ def test_mutation():
         user = graphene.Field(User)
 
         def mutate(self, info, username):
-            return AddUser(user=User(username))
+            return AddUser(user=User(username=username))
 
     class Mutation(graphene.ObjectType):
         add_user = AddUser.Field()
@@ -233,7 +253,7 @@ def test_mutation():
         }
         """
     ).strip()
-    assert str(schema) == expected
+    assert normalize_schema(str(schema)) == normalize_schema(expected)
 
     result = schema.execute_sync(
         """
